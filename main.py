@@ -18,22 +18,31 @@ from collections import OrderedDict
 import dataloader
 import random
 
+#import os
+#os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
+import scipy.io as sio
+import cv2
+import numpy as np
+
 parser = argparse.ArgumentParser(description='PyTorch Clothing-1M Training')
 parser.add_argument('--lr', default=0.0008, type=float, help='learning_rate')
 parser.add_argument('--meta_lr', default=0.02, type=float, help='meta learning_rate')
-parser.add_argument('--num_fast', default=10, type=int, help='number of random perturbations')
+parser.add_argument('--num_fast', default=3, type=int, help='number of random perturbations')
 parser.add_argument('--perturb_ratio', default=0.5, type=float, help='ratio of random perturbations')
 parser.add_argument('--start_iter', default=500, type=int)
 parser.add_argument('--mid_iter', default=2000, type=int)
 parser.add_argument('--start_epoch', default=1, type=int)
-parser.add_argument('--num_epochs', default=1, type=int)
-parser.add_argument('--batch_size', default=32, type=int)
+parser.add_argument('--num_epochs', default=100, type=int)
+parser.add_argument('--batch_size', default=256, type=int)
 parser.add_argument('--alpha', default=1, type=int)
 parser.add_argument('--eps', default=0.99, type=float, help='Running average of model weights')
 parser.add_argument('--seed', default=123)
 parser.add_argument('--gpuid', default=1, type=int)
 parser.add_argument('--id', default='MLNT')
+parser.add_argument('--nclass', default=4, type=int)
 parser.add_argument('--checkpoint', default='cross_entropy')
+parser.add_argument('--drop_prob', default=0.0, type=float)
 args = parser.parse_args()
 
 random.seed(args.seed)
@@ -97,7 +106,7 @@ def train(epoch):
                 targets_fast = targets.clone()
                 randidx = torch.randperm(targets.size(0))
                 for n in range(int(targets.size(0)*args.perturb_ratio)):
-                    num_neighbor = 10
+                    num_neighbor = 3
                     idx = randidx[n]
                     feat = feats[idx]
                     feat.view(1,feat.size(0))
@@ -110,8 +119,9 @@ def train(epoch):
 
                 grads = torch.autograd.grad(fast_loss, net.parameters(), create_graph=True, retain_graph=True, only_inputs=True)
                 for grad in grads:
-                    grad.detach_()
-                    grad.requires_grad = False  
+                    grad.detach()
+                    #grad.requires_grad = False  
+                    grad.detach().requires_grad_(False)
    
                 fast_weights = OrderedDict((name, param - args.meta_lr*grad) for ((name, param), grad) in zip(net.named_parameters(), grads))
                 
@@ -120,7 +130,7 @@ def train(epoch):
                 logp_fast = F.log_softmax(fast_out,dim=1)                
                 consistent_loss = consistent_criterion(logp_fast,p_tch)
                 consistent_loss = consistent_loss*alpha/args.num_fast 
-                consistent_loss.backward()
+                consistent_loss.backward(retain_graph=True)
                 
         optimizer.step() # Optimizer update
 
@@ -203,7 +213,22 @@ def val_tch(epoch,iteration):
             'best_acc': best,
         }, save_point)        
 
-def test():
+def saveIMGs(path, ip, op, pred, target):
+    for i in range(ip.shape[0]):
+        ip1 = ip[i]
+        op1 = op[i]
+        pred1 = pred[i]
+        target1 = target[i]
+        path1 = path+'_'+str(i)+'_'+str(pred1)+'_'+str(target1)+'.png'
+        ip1 = np.transpose(ip1, [1,2,0])
+        ip1 = (ip1-ip1.min()) / (ip1.max()-ip1.min())
+        ip1 *= 255
+
+        cv2.imwrite(path1, ip1) 
+
+
+
+def test(save_path):
     test_net.eval()
     test_loss = 0
     correct = 0
@@ -215,10 +240,23 @@ def test():
         outputs = test_net(inputs)
         loss = criterion(outputs, targets)
 
+        ip = inputs.detach().cpu().numpy()
+        op = outputs.detach().cpu().numpy()
+
         test_loss += loss.data[0]
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
+
+        pred = predicted.detach().cpu().numpy()
+
+        targ = targets.detach().cpu().numpy()
+        
+        mat = {'ip':ip, 'op':op, 'pred':pred, 'targ':targ}
+        sio.savemat(os.path.join(save_path, str(batch_idx)+'.mat'), mat)
+
+        saveIMGs(os.path.join(save_path, 'imgs', str(batch_idx)), ip, op, pred, targ)
+
     test_acc = 100.*correct/total   
     print('* Test results : Acc@1 = %.2f%%' %(test_acc))
     record.write('\nTest Acc: %f\n'%test_acc)
@@ -240,14 +278,14 @@ init = True
 # Model
 print('\nModel setup')
 print('| Building net')
-net = models.resnet50(pretrained=True)
-net.fc = nn.Linear(2048,14)
-tch_net = models.resnet50(pretrained=True)
-tch_net.fc = nn.Linear(2048,14)
-pretrain_net = models.resnet50(pretrained=True)
-pretrain_net.fc = nn.Linear(2048,14)
-test_net = models.resnet50(pretrained=True)
-test_net.fc = nn.Linear(2048,14)
+net = models.resnet50(pretrained=True, do=args.drop_prob)
+net.fc = nn.Linear(2048,args.nclass)
+tch_net = models.resnet50(pretrained=True, do=args.drop_prob)
+tch_net.fc = nn.Linear(2048,args.nclass)
+pretrain_net = models.resnet50(pretrained=True, do=args.drop_prob)
+pretrain_net.fc = nn.Linear(2048,args.nclass)
+test_net = models.resnet50(pretrained=True, do=args.drop_prob)
+test_net.fc = nn.Linear(2048,args.nclass)
 
 print('| load pretrain from checkpoint...')
 checkpoint = torch.load('./checkpoint/%s.pth.tar'%args.checkpoint)
@@ -277,9 +315,9 @@ print('| Initial Learning Rate = ' + str(args.lr))
 for epoch in range(1, 1+args.num_epochs):
     train(epoch)
 
-    print('\nTesting model')
-    best_model = torch.load('./checkpoint/%s.pth.tar'%args.id)
-    test_net.load_state_dict(best_model['state_dict'])
-    test()
+print('\nTesting model')
+best_model = torch.load('./checkpoint/%s.pth.tar'%args.id)
+test_net.load_state_dict(best_model['state_dict'])
+test(save_path=r'/media/HDD_3TB2/rupali/Code/MLNT-master/checkpoint/results')
 
 record.close()

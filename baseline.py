@@ -1,3 +1,4 @@
+
 from __future__ import print_function
 
 import sys
@@ -12,6 +13,7 @@ import torchvision.transforms as transforms
 import models as models
 
 import os
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import sys
 import time
 import argparse
@@ -23,19 +25,22 @@ import dataloader
 
 parser = argparse.ArgumentParser(description='PyTorch Clothing-1M Training')
 parser.add_argument('--lr', default=0.0008, type=float, help='learning_rate')
-parser.add_argument('--start_epoch', default=2, type=int)
-parser.add_argument('--num_epochs', default=3, type=int)
-parser.add_argument('--batch_size', default=32, type=int)
+parser.add_argument('--start_epoch', default=1, type=int)
+parser.add_argument('--num_epochs', default=100, type=int)
+parser.add_argument('--batch_size', default=256, type=int)
 parser.add_argument('--optim_type', default='SGD')
 parser.add_argument('--seed', default=7)
-parser.add_argument('--gpuid', default=1, type=int)
+parser.add_argument('--gpuid',default=0, type=int)
+parser.add_argument('--nclass', default=4, type=int)
 parser.add_argument('--id', default='cross_entropy')
+parser.add_argument('--drop_prob', default=0.25, type=float)
 args = parser.parse_args()
 
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed_all(args.seed)
 # Hyper Parameter settings
 use_cuda = torch.cuda.is_available()
+
 def save_checkpoint(state, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
   
@@ -129,7 +134,7 @@ def test():
     test_acc = acc
     record.write('Test Acc: %f\n'%acc)
     
-os.mkdir('checkpoint')     
+os.makedirs('checkpoint', exist_ok = True)     
 record=open('./checkpoint/'+args.id+'_test.txt','w')
 record.write('learning rate: %f\n'%args.lr)
 record.flush()
@@ -142,10 +147,10 @@ test_acc = 0
 # Model
 print('\nModel setup')
 print('| Building net')
-net = models.resnet50(pretrained=True)
-net.fc = nn.Linear(2048,14)
-test_net = models.resnet50(pretrained=True)
-test_net.fc = nn.Linear(2048,14)
+net = models.resnet50(pretrained=True, do=args.drop_prob)
+net.fc = nn.Linear(2048,args.nclass)
+test_net = models.resnet50(pretrained=True, do=args.drop_prob)
+test_net.fc = nn.Linear(2048,args.nclass)
 if use_cuda:
     net.cuda()
     test_net.cuda()
