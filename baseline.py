@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 import models as models
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+# os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import sys
 import time
 import argparse
@@ -22,6 +22,9 @@ import numpy as np
 import random
 
 from torch.autograd import Variable
+
+# from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 
 import dataloader
 
@@ -32,10 +35,12 @@ parser.add_argument('--num_epochs', default=100, type=int)
 parser.add_argument('--batch_size', default=256, type=int)
 parser.add_argument('--optim_type', default='SGD')
 parser.add_argument('--seed', default=7)
-parser.add_argument('--gpuid',default=0, type=int)
-parser.add_argument('--nclass', default=4, type=int)
+parser.add_argument('--gpuid',default=1, type=int)
+parser.add_argument('--nclass', default=10, type=int)
 parser.add_argument('--id', default='cross_entropy')
-parser.add_argument('--drop_prob', default=0.25, type=float)
+parser.add_argument('--drop_prob', default=0.0, type=float)
+parser.add_argument('--noise_pattern', default='sym')
+parser.add_argument('--noise_ratio', default=0.5, type=float)
 args = parser.parse_args()
 
 random.seed(args.seed)
@@ -46,6 +51,10 @@ torch.backends.cudnn.benchmark = False
 torch.cuda.set_device(args.gpuid)
 torch.cuda.manual_seed_all(args.seed)
 use_cuda = torch.cuda.is_available()
+
+
+writer = SummaryWriter(log_dir='TBLogsBaseline')
+
 
 def save_checkpoint(state, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -84,6 +93,8 @@ def train(epoch):
         sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
                 %(epoch, args.num_epochs, batch_idx+1, (len(train_loader.dataset)//args.batch_size)+1, loss.data[0], 100.*correct/total))
         sys.stdout.flush()
+        writer.add_scalar('Loss/train', loss.data[0], epoch*len(train_loader)+batch_idx)
+        writer.add_scalar('Accuracy/train', 100.*correct/total, epoch*len(train_loader)+batch_idx)
         if batch_idx%1000==0:
             val(epoch)
             net.train()
@@ -106,11 +117,14 @@ def val(epoch):
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
 
+        writer.add_scalar('Loss/val', loss.data[0], epoch*len(val_loader)+batch_idx)
+        writer.add_scalar('Accuracy/val', 100.*correct/total, epoch*len(val_loader)+batch_idx)
+
     # Save checkpoint when best model
     acc = 100.*correct/total
     print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%%" %(epoch, loss.data[0], acc))
     record.write('Validation Acc: %f\n'%acc)
-    record.flush()
+    record.flush()    
     if acc > best_acc:
         best_acc = acc
         print('| Saving Best Model ...')
@@ -125,7 +139,7 @@ def test():
     test_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(val_loader):
+    for batch_idx, (inputs, targets) in enumerate(test_loader):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs, volatile=True), Variable(targets)
@@ -136,6 +150,10 @@ def test():
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
+
+        writer.add_scalar('Loss/test', loss.data[0], epoch*len(test_loader)+batch_idx)
+        writer.add_scalar('Accuracy/test', 100.*correct/total, epoch*len(test_loader)+batch_idx)
+
     acc = 100.*correct/total   
     test_acc = acc
     record.write('Test Acc: %f\n'%acc)
@@ -145,7 +163,7 @@ record=open('./checkpoint/'+args.id+'_test.txt','w')
 record.write('learning rate: %f\n'%args.lr)
 record.flush()
      
-loader = dataloader.clothing_dataloader(batch_size=args.batch_size,num_workers=5,shuffle=True)
+loader = dataloader.DataLoadersCreator(batch_size=args.batch_size,num_workers=5,shuffle=True, noise_pattern=args.noise_pattern, noise_ratio=args.noise_ratio)
 train_loader,val_loader,test_loader = loader.run()
 
 best_acc = 0

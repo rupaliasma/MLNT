@@ -90,8 +90,10 @@ class CustomTensorDataset(Dataset):
         return self.tensors[0].size(0)
           
         
-class clothing_dataloader():  
-    def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'F:\CIFAR10', noise_pattern='sym', noise_ratio=0.5):#r'/media/HDD_3TB2/rupali/Dataset/CIFAR10'):
+class DataLoadersCreator():  
+    def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'/media/HDD_3TB2/rupali/Dataset/CIFAR10', noise_pattern='sym', noise_ratio=0.5):
+    # def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'F:\CIFAR10', noise_pattern='sym', noise_ratio=0.5):
+    #set noise_pattern to None if no noise is intended to be added in the trainset
     
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -153,7 +155,7 @@ class clothing_dataloader():
 
 
 if __name__ == "__main__":
-    x=clothing_dataloader(batch_size=10, num_workers=0, shuffle=True)
+    x=DataLoadersCreator(batch_size=10, num_workers=0, shuffle=True)
     tr, te, v = x.run()
     for i_batch, sample_batched in tqdm(enumerate(tr)):
         print('d')
