@@ -18,6 +18,8 @@ import sys
 import time
 import argparse
 import datetime
+import numpy as np
+import random
 
 from torch.autograd import Variable
 
