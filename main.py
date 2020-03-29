@@ -46,8 +46,11 @@ parser.add_argument('--drop_prob', default=0.0, type=float)
 args = parser.parse_args()
 
 random.seed(args.seed)
-torch.cuda.set_device(args.gpuid)
+np.random.seed(args.seed)
 torch.manual_seed(args.seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+torch.cuda.set_device(args.gpuid)
 torch.cuda.manual_seed_all(args.seed)
 use_cuda = torch.cuda.is_available()
 
