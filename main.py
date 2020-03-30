@@ -204,7 +204,7 @@ def val(epoch,iteration):
     if acc > best:
         best = acc
         print('| Saving Best Model (net)...')
-        save_point = './checkpoint/%s.net.pth.tar'%(args.id)
+        save_point = './checkpoint/%s.main.pth.tar'%(args.id)
         save_checkpoint({
             'state_dict': net.state_dict(),
             'optimzer': optimizer.state_dict(),
@@ -249,7 +249,7 @@ def val_tch(epoch,iteration):
     if acc > best:
         best = acc
         print('| Saving Best Model (tchnet)...')
-        save_point = './checkpoint/%s.tchnet.pth.tar'%(args.id)
+        save_point = './checkpoint/%s.main.pth.tar'%(args.id)
         save_checkpoint({
             'state_dict': tch_net.state_dict(),
             'best_acc': best,
@@ -360,10 +360,12 @@ if args.resume:
     net.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer'])
     start_epoch = checkpoint['epoch']
-    best = checkpoint['best_acc']
 
     tchcheckpoint = torch.load('./checkpoint_current/%s.tchnet.pth.tar'%args.id)
     tch_net.load_state_dict(tchcheckpoint['state_dict'])
+
+    best_model = torch.load('./checkpoint/%s.main.pth.tar'%args.id)
+    best = best_model['best_acc']
 
 
 print('\nTraining model')
@@ -374,7 +376,7 @@ for epoch in range(start_epoch, 1+args.num_epochs):
     train(epoch)
 
 print('\nTesting model')
-best_model = torch.load('./checkpoint/%s.net.pth.tar'%args.id)
+best_model = torch.load('./checkpoint/%s.main.pth.tar'%args.id)
 test_net.load_state_dict(best_model['state_dict'])
 test(save_path=r'/media/HDD_3TB2/rupali/Code/MLNT-master/checkpoint/results')
 
