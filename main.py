@@ -48,6 +48,7 @@ parser.add_argument('--checkpoint', default='cross_entropy')
 parser.add_argument('--drop_prob', default=0.0, type=float)
 parser.add_argument('--noise_pattern', default='sym')
 parser.add_argument('--noise_ratio', default=0.5, type=float)
+parser.add_argument('--resume', default=False, type=bool)
 args = parser.parse_args()
 
 random.seed(args.seed)
@@ -187,12 +188,27 @@ def val(epoch,iteration):
     acc = 100.*correct/total
     print("\n| Validation Epoch #%d Batch #%3d\t\t\tLoss: %.4f Acc@1: %.2f%%" %(epoch, iteration, loss.data[0], acc))
     record.write('Epoch #%d Batch #%3d  Acc: %.2f' %(epoch,iteration,acc))
+
+    #Saving checkpoint always
+    print('| Saving Current Model (net)...')
+    save_point = './checkpoint_current/%s.net.pth.tar'%(args.id)
+    save_checkpoint({
+        'state_dict': net.state_dict(),
+        'optimzer': optimizer.state_dict(),
+        'epoch': epoch,
+        'acc': acc,
+        'best_acc': best
+    }, save_point)
+
+    #Saving current model
     if acc > best:
         best = acc
         print('| Saving Best Model (net)...')
-        save_point = './checkpoint/%s.pth.tar'%(args.id)
+        save_point = './checkpoint/%s.net.pth.tar'%(args.id)
         save_checkpoint({
             'state_dict': net.state_dict(),
+            'optimzer': optimizer.state_dict(),
+            'epoch': epoch,
             'best_acc': best,
         }, save_point)       
 
@@ -219,10 +235,21 @@ def val_tch(epoch,iteration):
     print("| tch Validation Epoch #%d Batch #%3d\t\t\tLoss: %.4f Acc@1: %.2f%%\n" %(epoch, iteration, loss.data[0], acc))
     record.write(' | tchAcc: %.2f\n' %acc)
     record.flush()
+
+    #Saving regular checkpoint
+    print('| Saving Current Model (tchnet)...')
+    save_point = './checkpoint_current/%s.tchnet.pth.tar'%(args.id)
+    save_checkpoint({
+        'state_dict': tch_net.state_dict(),
+        'acc': acc,
+        'best_acc': best,
+    }, save_point) 
+
+    #Saving best model
     if acc > best:
         best = acc
         print('| Saving Best Model (tchnet)...')
-        save_point = './checkpoint/%s.pth.tar'%(args.id)
+        save_point = './checkpoint/%s.tchnet.pth.tar'%(args.id)
         save_checkpoint({
             'state_dict': tch_net.state_dict(),
             'best_acc': best,
@@ -306,7 +333,7 @@ test_net = models.resnet50(pretrained=True, do=args.drop_prob)
 test_net.fc = nn.Linear(2048,args.nclass)
 
 print('| load pretrain from checkpoint...')
-checkpoint = torch.load('./checkpoint/%s.pth.tar'%args.checkpoint)
+checkpoint = torch.load('./checkpoint/%s.baseline.pth.tar'%args.checkpoint)
 pretrain_net.load_state_dict(checkpoint['state_dict'])
 
 if use_cuda:
@@ -326,15 +353,28 @@ criterion = nn.CrossEntropyLoss()
 consistent_criterion = nn.KLDivLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-3)
 
+start_epoch = 1
+
+if args.resume:
+    checkpoint = torch.load('./checkpoint_current/%s.net.pth.tar'%args.id)
+    net.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    start_epoch = checkpoint['epoch']
+    best = checkpoint['best_acc']
+
+    tchcheckpoint = torch.load('./checkpoint_current/%s.tchnet.pth.tar'%args.id)
+    tch_net.load_state_dict(tchcheckpoint['state_dict'])
+
+
 print('\nTraining model')
 print('| Training Epochs = ' + str(args.num_epochs))
 print('| Initial Learning Rate = ' + str(args.lr))
 
-for epoch in range(1, 1+args.num_epochs):
+for epoch in range(start_epoch, 1+args.num_epochs):
     train(epoch)
 
 print('\nTesting model')
-best_model = torch.load('./checkpoint/%s.pth.tar'%args.id)
+best_model = torch.load('./checkpoint/%s.net.pth.tar'%args.id)
 test_net.load_state_dict(best_model['state_dict'])
 test(save_path=r'/media/HDD_3TB2/rupali/Code/MLNT-master/checkpoint/results')
 
