@@ -29,7 +29,9 @@ import cv2
 import numpy as np
 
 parser = argparse.ArgumentParser(description='PyTorch Clothing-1M Training')
-parser.add_argument('--lr', default=0.0008, type=float, help='learning_rate')
+parser.add_argument('--lr', default=0.01, type=float, help='learning_rate')
+parser.add_argument('--lrdecay_nepoch', default=25, type=float, help='decay learning_rate after every n epoch')
+parser.add_argument('--lrdecay', default=0.1, type=float, help='decay rate of learning_rate')
 parser.add_argument('--meta_lr', default=0.02, type=float, help='meta learning_rate')
 parser.add_argument('--num_fast', default=3, type=int, help='number of random perturbations')
 parser.add_argument('--perturb_ratio', default=0.5, type=float, help='ratio of random perturbations')
@@ -37,15 +39,15 @@ parser.add_argument('--optim_type', default='SGD')
 parser.add_argument('--start_iter', default=500, type=int)
 parser.add_argument('--mid_iter', default=2000, type=int)
 parser.add_argument('--start_epoch', default=1, type=int)
-parser.add_argument('--num_epochs', default=1000, type=int)
+parser.add_argument('--num_epochs', default=150, type=int)
 parser.add_argument('--batch_size', default=256, type=int)
 parser.add_argument('--alpha', default=1, type=int)
 parser.add_argument('--eps', default=0.99, type=float, help='Running average of model weights')
-parser.add_argument('--seed', default=123)
-parser.add_argument('--gpuid', default=0, type=int)
-parser.add_argument('--id', default='do25_sym50_SGD') #ID of the main can be same as baseline, or can be different - depending upon our run config
+parser.add_argument('--seed', default=7)
+parser.add_argument('--gpuid', default=1, type=int)
+parser.add_argument('--id', default='do25_sym50_SGD_lrdecay') #ID of the main can be same as baseline, or can be different - depending upon our run config
 parser.add_argument('--nclass', default=10, type=int)
-parser.add_argument('--checkpoint', default='do25_sym50_SGD') #put the ID of the baseline
+parser.add_argument('--checkpoint', default='do25_sym50_SGD_lrdecay') #put the ID of the baseline
 parser.add_argument('--drop_prob', default=0.25, type=float)
 parser.add_argument('--noise_pattern', default='sym')
 parser.add_argument('--noise_ratio', default=0.5, type=float)
@@ -65,6 +67,16 @@ writer = SummaryWriter(log_dir='./TBLogs/Main_%s/'%(args.id))
 
 def save_checkpoint(state, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
+
+def adjust_learning_rate(optimizer, epoch):
+    """Sets the learning rate to the initial LR decayed by lrDecayRate every lrDecayNEpoch epochs"""
+
+    lr = args.lr * (args.lrdecay ** (epoch // args.lrdecay_nepoch))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+    return lr
+
 # Training
 def train(epoch):
     global init
@@ -74,12 +86,7 @@ def train(epoch):
     correct = 0
     total = 0
     
-    learning_rate = args.lr
-    if epoch > args.start_epoch:
-        learning_rate=learning_rate/10        
-        
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = learning_rate
+    learning_rate = adjust_learning_rate(optimizer, epoch-1)
 
     print('\n=> %s Training Epoch #%d, LR=%.4f' %(args.id,epoch, learning_rate))
     
@@ -195,7 +202,7 @@ def val(epoch,iteration):
     save_point = './checkpoint_current/%s.net.pth.tar'%(args.id)
     save_checkpoint({
         'state_dict': net.state_dict(),
-        'optimzer': optimizer.state_dict(),
+        'optimizer': optimizer.state_dict(),
         'epoch': epoch,
         'acc': acc,
         'best_acc': best
@@ -208,7 +215,7 @@ def val(epoch,iteration):
         save_point = './checkpoint/%s.main.pth.tar'%(args.id)
         save_checkpoint({
             'state_dict': net.state_dict(),
-            'optimzer': optimizer.state_dict(),
+            'optimizer': optimizer.state_dict(),
             'epoch': epoch,
             'best_acc': best,
         }, save_point)       
@@ -334,7 +341,7 @@ test_net = models.resnet50(pretrained=True, do=args.drop_prob)
 test_net.fc = nn.Linear(2048,args.nclass)
 
 print('| load pretrain from checkpoint...')
-checkpoint = torch.load('./checkpoint/%s.baseline.pth.tar'%args.checkpoint, map_location=torch.device('cuda', args.gpuid) if use_cuda else torch.device('cpu'))
+checkpoint = torch.load('./checkpoint/%s.baseline.pth.tar'%args.checkpoint)
 pretrain_net.load_state_dict(checkpoint['state_dict'])
 
 if use_cuda:
@@ -362,15 +369,15 @@ else:
 start_epoch = 1
 
 if args.resume:
-    checkpoint = torch.load('./checkpoint_current/%s.net.pth.tar'%args.id, map_location=torch.device('cuda', args.gpuid) if use_cuda else torch.device('cpu'))
+    checkpoint = torch.load('./checkpoint_current/%s.net.pth.tar'%args.id)
     net.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer'])
     start_epoch = checkpoint['epoch']
 
-    tchcheckpoint = torch.load('./checkpoint_current/%s.tchnet.pth.tar'%args.id, map_location=torch.device('cuda', args.gpuid) if use_cuda else torch.device('cpu'))
+    tchcheckpoint = torch.load('./checkpoint_current/%s.tchnet.pth.tar'%args.id)
     tch_net.load_state_dict(tchcheckpoint['state_dict'])
 
-    best_model = torch.load('./checkpoint/%s.main.pth.tar'%args.id, map_location=torch.device('cuda', args.gpuid) if use_cuda else torch.device('cpu'))
+    best_model = torch.load('./checkpoint/%s.main.pth.tar'%args.id)
     best = best_model['best_acc']
 
 
@@ -382,7 +389,7 @@ for epoch in range(start_epoch, 1+args.num_epochs):
     train(epoch)
 
 print('\nTesting model')
-best_model = torch.load('./checkpoint/%s.main.pth.tar'%args.id, map_location=torch.device('cuda', args.gpuid) if use_cuda else torch.device('cpu'))
+best_model = torch.load('./checkpoint/%s.main.pth.tar'%args.id)
 test_net.load_state_dict(best_model['state_dict'])
 test(save_path=r'/media/HDD_3TB2/rupali/Code/MLNT-master/checkpoint/results')
 

@@ -14,7 +14,6 @@ import models as models
 
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"]="1"
-import sys
 import time
 import argparse
 import datetime
@@ -31,17 +30,18 @@ import dataloader
 parser = argparse.ArgumentParser(description='PyTorch Clothing-1M Training')
 parser.add_argument('--lr', default=0.0008, type=float, help='learning_rate')
 parser.add_argument('--start_epoch', default=1, type=int) #We won't use it, as it will be decided by the checkpoint if resuming
-parser.add_argument('--num_epochs', default=500, type=int)
+parser.add_argument('--num_epochs', default=2000, type=int)
 parser.add_argument('--batch_size', default=256, type=int)
 parser.add_argument('--optim_type', default='SGD')
 parser.add_argument('--seed', default=7)
 parser.add_argument('--gpuid',default=1, type=int)
 parser.add_argument('--nclass', default=10, type=int)
-parser.add_argument('--id', default='cross_entropy')
+parser.add_argument('--id', default='do25_sym50_SGD')
 parser.add_argument('--drop_prob', default=0.25, type=float)
 parser.add_argument('--noise_pattern', default='sym')
 parser.add_argument('--noise_ratio', default=0.5, type=float)
-parser.add_argument('--resume', default=False, type=bool)
+parser.add_argument('--resume', default=True, type=bool)
+parser.add_argument('--test_only', default=False, type=bool)
 args = parser.parse_args()
 
 random.seed(args.seed)
@@ -54,7 +54,7 @@ torch.cuda.manual_seed_all(args.seed)
 use_cuda = torch.cuda.is_available()
 
 
-writer = SummaryWriter(log_dir='TBLogsBaseline')
+writer = SummaryWriter(log_dir='./TBLogs/Baseline_%s/'%(args.id)) 
 
 
 def save_checkpoint(state, filename='checkpoint.pth.tar'):
@@ -176,11 +176,12 @@ def test():
     
 os.makedirs('checkpoint', exist_ok = True)     
 os.makedirs('checkpoint_current', exist_ok = True)     
-record=open('./checkpoint/'+args.id+'_test.txt','w')
+record=open('./checkpoint/baseline_'+args.id+'_test.txt','w')
 record.write('learning rate: %f\n'%args.lr)
 record.flush()
      
-loader = dataloader.DataLoadersCreator(batch_size=args.batch_size,num_workers=5,shuffle=True, noise_pattern=args.noise_pattern, noise_ratio=args.noise_ratio)
+loader = dataloader.DataLoadersCreator(batch_size=args.batch_size,num_workers=5,shuffle=True, 
+noise_pattern=args.noise_pattern, noise_ratio=args.noise_ratio, n_classes=None if args.nclass==10 else args.nclass)
 train_loader,val_loader,test_loader = loader.run()
 
 best_acc = 0
@@ -198,25 +199,31 @@ if use_cuda:
     cudnn.benchmark = True
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-3)
+if args.optim_type == 'SGD':
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-3)
+elif args.optim_type == 'Adam':
+    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=1e-3)
+else:
+    sys.exit('Invalid Optimzer Choise')
 
 start_epoch = 1
 
 if args.resume:
     checkpoint = torch.load('./checkpoint_current/%s.baseline.pth.tar'%args.id)
     net.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer'])
-    start_epoch = checkpoint['epoch']
+    optimizer.load_state_dict(checkpoint['optimzer'])
+    start_epoch = checkpoint['epoch']+1
     best_acc = checkpoint['best_acc']
 
-print('\nTraining model')
-print('| Training Epochs = ' + str(args.num_epochs))
-print('| Initial Learning Rate = ' + str(args.lr))
-print('| Optimizer = ' + str(args.optim_type))
+if not args.test_only:
+    print('\nTraining model')
+    print('| Training Epochs = ' + str(args.num_epochs))
+    print('| Initial Learning Rate = ' + str(args.lr))
+    print('| Optimizer = ' + str(args.optim_type))
 
-for epoch in range(start_epoch, 1+args.num_epochs):
-    train(epoch)
-    val(epoch)
+    for epoch in range(start_epoch, 1+args.num_epochs):
+        train(epoch)
+        val(epoch)
 
 print('\nTesting model')
 checkpoint = torch.load('./checkpoint/%s.baseline.pth.tar'%args.id)

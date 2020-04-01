@@ -44,6 +44,10 @@ def flip_label(y, pattern, ratio, one_hot=True):
         y = np.eye(n_class)[y]
     return y
 
+def get_class_subset(imgs, lbls, n_classes):
+    selectedIdx = lbls < n_classes
+    return imgs[selectedIdx], lbls[selectedIdx]
+
 
 class CustomCIFAR(Dataset):
     def __init__(self, subset, transform=None, target_transform=None):
@@ -91,16 +95,19 @@ class CustomTensorDataset(Dataset):
           
         
 class DataLoadersCreator():  
-    def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'/media/HDD_3TB2/rupali/Dataset/CIFAR10', noise_pattern='sym', noise_ratio=0.5):
-    # def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'F:\CIFAR10', noise_pattern='sym', noise_ratio=0.5):
+    def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'/media/HDD2TB/rupali/Work104/Dataset/CIFAR10', 
+    noise_pattern='sym', noise_ratio=0.5, n_classes=None):
+    # def __init__(self, batch_size, num_workers, shuffle, cifar_root=r'F:\CIFAR10' /media/HDD_3TB2/rupali/Dataset/CIFAR10, noise_pattern='sym', noise_ratio=0.5):
     #set noise_pattern to None if no noise is intended to be added in the trainset
-    
+    #set n_classes to None if you want all the classes
+
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
         self.cifar_root = cifar_root
         self.noise_pattern = noise_pattern
         self.noise_ratio = noise_ratio
+        self.n_classes = n_classes
    
     def run(self):
         self.transform_augments = transforms.Compose([
@@ -123,6 +130,9 @@ class DataLoadersCreator():
         train_dataset, val_dataset = random_split(trainval_dataset, lengths)
         
         train_imgs, train_targets = get_all_data(train_dataset, num_workers=self.num_workers)
+
+        if self.n_classes is not None:
+            train_imgs, train_targets = get_class_subset(train_imgs, train_targets, self.n_classes)
         
         if self.noise_pattern is not None:
             original_train_targets_np = train_targets.numpy()
@@ -134,7 +144,14 @@ class DataLoadersCreator():
         train_dataset = CustomTensorDataset([train_imgs, train_targets], transform=self.transform_augments)
 
         val_imgs, val_targets = get_all_data(val_dataset, num_workers=self.num_workers)
+        if self.n_classes is not None:
+            val_imgs, val_targets = get_class_subset(val_imgs, val_targets, self.n_classes)
         val_dataset = TensorDataset(val_imgs, val_targets)
+
+        if self.n_classes is not None:
+            test_imgs, test_targets = get_all_data(test_dataset, num_workers=self.num_workers)
+            test_imgs, test_targets = get_class_subset(test_imgs, test_targets, self.n_classes)
+            test_dataset = TensorDataset(test_imgs, test_targets)
         
         train_loader = DataLoader(
             dataset=train_dataset, 

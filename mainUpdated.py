@@ -146,16 +146,16 @@ def train(epoch):
                 
         optimizer.step() # Optimizer update
 
-        train_loss += class_loss.data[0]      
+        train_loss += class_loss.item()      
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
 
         sys.stdout.write('\r')
         sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
-                %(epoch, args.num_epochs, batch_idx+1, (len(train_loader.dataset)//args.batch_size)+1, class_loss.data[0], 100.*correct/total))
+                %(epoch, args.num_epochs, batch_idx+1, (len(train_loader.dataset)//args.batch_size)+1, class_loss.item(), 100.*correct/total))
         sys.stdout.flush()
-        writer.add_scalar('Loss/train', class_loss.data[0], epoch*len(train_loader)+batch_idx)
+        writer.add_scalar('Loss/train', class_loss.item(), epoch*len(train_loader)+batch_idx)
         writer.add_scalar('Accuracy/train', 100.*correct/total, epoch*len(train_loader)+batch_idx)
         if batch_idx%1000==0:
             val(epoch,batch_idx)
@@ -170,24 +170,25 @@ def val(epoch,iteration):
     val_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(val_loader):
-        if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs, volatile=True), Variable(targets)
-        outputs = net(inputs)
-        loss = criterion(outputs, targets)
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(val_loader):
+            if use_cuda:
+                inputs, targets = inputs.cuda(), targets.cuda()
+            inputs, targets = Variable(inputs), Variable(targets)
+            outputs = net(inputs)
+            loss = criterion(outputs, targets)
 
-        val_loss += loss.data[0]
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()        
+            val_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += predicted.eq(targets.data).cpu().sum()        
 
-        writer.add_scalar('Loss/val', loss.data[0], epoch*len(val_loader)+batch_idx)
-        writer.add_scalar('Accuracy/val', 100.*correct/total, epoch*len(val_loader)+batch_idx)
+            writer.add_scalar('Loss/val', loss.item(), epoch*len(val_loader)+batch_idx)
+            writer.add_scalar('Accuracy/val', 100.*correct/total, epoch*len(val_loader)+batch_idx)
 
     # Save checkpoint when best model
     acc = 100.*correct/total
-    print("\n| Validation Epoch #%d Batch #%3d\t\t\tLoss: %.4f Acc@1: %.2f%%" %(epoch, iteration, loss.data[0], acc))
+    print("\n| Validation Epoch #%d Batch #%3d\t\t\tLoss: %.4f Acc@1: %.2f%%" %(epoch, iteration, loss.item(), acc))
     record.write('Epoch #%d Batch #%3d  Acc: %.2f' %(epoch,iteration,acc))
 
     #Saving checkpoint always
@@ -219,21 +220,22 @@ def val_tch(epoch,iteration):
     val_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(val_loader):
-        if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs, volatile=True), Variable(targets)
-        outputs = tch_net(inputs)
-        loss = criterion(outputs, targets)
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(val_loader):
+            if use_cuda:
+                inputs, targets = inputs.cuda(), targets.cuda()
+            inputs, targets = Variable(inputs), Variable(targets)
+            outputs = tch_net(inputs)
+            loss = criterion(outputs, targets)
 
-        val_loss += loss.data[0]
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
+            val_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += predicted.eq(targets.data).cpu().sum()
 
     # Save checkpoint when best model
     acc = 100.*correct/total
-    print("| tch Validation Epoch #%d Batch #%3d\t\t\tLoss: %.4f Acc@1: %.2f%%\n" %(epoch, iteration, loss.data[0], acc))
+    print("| tch Validation Epoch #%d Batch #%3d\t\t\tLoss: %.4f Acc@1: %.2f%%\n" %(epoch, iteration, loss.item(), acc))
     record.write(' | tchAcc: %.2f\n' %acc)
     record.flush()
 
@@ -276,32 +278,33 @@ def test(save_path):
     test_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(test_loader):
-        if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs, volatile=True), Variable(targets)
-        outputs = test_net(inputs)
-        loss = criterion(outputs, targets)
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(test_loader):
+            if use_cuda:
+                inputs, targets = inputs.cuda(), targets.cuda()
+            inputs, targets = Variable(inputs), Variable(targets)
+            outputs = test_net(inputs)
+            loss = criterion(outputs, targets)
 
-        ip = inputs.detach().cpu().numpy()
-        op = outputs.detach().cpu().numpy()
+            ip = inputs.detach().cpu().numpy()
+            op = outputs.detach().cpu().numpy()
 
-        test_loss += loss.data[0]
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
+            test_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += predicted.eq(targets.data).cpu().sum()
 
-        writer.add_scalar('Loss/test', loss.data[0], epoch*len(test_loader)+batch_idx)
-        writer.add_scalar('Accuracy/test', 100.*correct/total, epoch*len(test_loader)+batch_idx)
+            writer.add_scalar('Loss/test', loss.item(), epoch*len(test_loader)+batch_idx)
+            writer.add_scalar('Accuracy/test', 100.*correct/total, epoch*len(test_loader)+batch_idx)
 
-        pred = predicted.detach().cpu().numpy()
+            pred = predicted.detach().cpu().numpy()
 
-        targ = targets.detach().cpu().numpy()
-        
-        mat = {'ip':ip, 'op':op, 'pred':pred, 'targ':targ}
-        sio.savemat(os.path.join(save_path, str(batch_idx)+'.mat'), mat)
+            targ = targets.detach().cpu().numpy()
+            
+            mat = {'ip':ip, 'op':op, 'pred':pred, 'targ':targ}
+            sio.savemat(os.path.join(save_path, str(batch_idx)+'.mat'), mat)
 
-        saveIMGs(os.path.join(save_path, 'imgs', str(batch_idx)), ip, op, pred, targ)
+            saveIMGs(os.path.join(save_path, 'imgs', str(batch_idx)), ip, op, pred, targ)
 
     test_acc = 100.*correct/total   
     print('* Test results : Acc@1 = %.2f%%' %(test_acc))
